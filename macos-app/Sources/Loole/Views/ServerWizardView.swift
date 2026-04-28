@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Step 3 of the wizard: package the server binary and give the user deploy commands.
-/// Also reachable post-setup via the "Deploy Server" tab to package additional clients.
 struct ServerWizardView: View {
     var onComplete: (() -> Void)?
     var onBack: (() -> Void)?
@@ -28,10 +26,11 @@ struct ServerWizardView: View {
 
                     if zipURL == nil {
                         modePicker
+                        Divider().opacity(0.15)
                         if mode == .firstTimeServer {
                             archDetectionSection
                         } else {
-                            addClientSection
+                            addDeviceSection
                         }
                     } else {
                         deploySection
@@ -53,9 +52,9 @@ struct ServerWizardView: View {
                 Text("3").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Color.accentColor)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("Deploy Loole Server").font(.system(size: 18, weight: .bold))
-                Text("Profile ID for this device: \(app.settings.clientID)")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                Text("Set Up Your Server").font(.system(size: 18, weight: .bold))
+                Text("The server is what routes your internet traffic.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
     }
@@ -63,81 +62,114 @@ struct ServerWizardView: View {
     // MARK: - Mode picker
 
     private var modePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Choose Setup Type").font(.system(size: 13, weight: .bold))
-            Picker("", selection: $mode) {
-                Text("First-time setup").tag(ServerPackager.Mode.firstTimeServer)
-                Text("Add to existing server").tag(ServerPackager.Mode.addClient)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Which situation applies to you?")
+                .font(.system(size: 13, weight: .semibold))
 
-            Text(mode == .firstTimeServer
-                 ? "Build a full server bundle (binary + this device's profile). Use this if you don't have a Loole server running yet."
-                 : "Build a profile-only zip to add this device to an existing Loole server. The server hot-loads new profiles within ~5 seconds — no restart needed.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+            modeCard(
+                selected: mode == .firstTimeServer,
+                icon: "server.rack",
+                title: "I need to set up a new server",
+                subtitle: "You'll get a package to install on your VPS."
+            ) {
+                mode = .firstTimeServer
+                detectedArch = nil
+            }
+
+            modeCard(
+                selected: mode == .addClient,
+                icon: "plus.rectangle.on.rectangle",
+                title: "A server is already running — add this Mac to it",
+                subtitle: "You'll get a small file to send to whoever manages the server."
+            ) {
+                mode = .addClient
+            }
         }
     }
 
-    // MARK: - Arch detection (first-time)
+    private func modeCard(selected: Bool, icon: String, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.accentColor : Color.primary)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.4))
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(selected ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(selected ? Color.accentColor.opacity(0.4) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - First-time setup
 
     private var archDetectionSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Confirm VPS CPU Architecture")
-                .font(.system(size: 13, weight: .bold))
-
-            Text("SSH into your server and run **`uname -m`**, then pick the result below:")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                archButton(arch: "amd64", label: "x86_64", subtitle: "Most common\n(Intel/AMD)")
-                archButton(arch: "arm64", label: "aarch64", subtitle: "ARM64\n(Oracle/Ampere)")
-            }
-
-            instructionsToggle
-
-            errorAndActions(buildEnabled: detectedArch != nil, buildLabel: "Prepare Server Zip")
-        }
-    }
-
-    // MARK: - Add-client section (no arch, no binary)
-
-    private var addClientSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.badge.plus")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.accentColor)
-                Text("This will produce a small profile-only zip.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-
+        VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Make sure the existing server was deployed with Loole's multi-profile mode (`./server -d /root/loole/profiles`). Older single-profile deployments need to be re-deployed once.")
+                Text("What type of server do you have?")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Check with your hosting provider if you're not sure. Most servers use Standard.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
+
+            HStack(spacing: 12) {
+                archButton(arch: "amd64", label: "Standard", subtitle: "Most common\n(Hetzner, DigitalOcean, Linode…)")
+                archButton(arch: "arm64", label: "ARM", subtitle: "Less common\n(Oracle Free Tier, Ampere…)")
+            }
 
             instructionsToggle
-
-            errorAndActions(buildEnabled: true, buildLabel: "Prepare Profile Zip")
+            errorAndActions(buildEnabled: detectedArch != nil, buildLabel: "Create Server Package")
         }
     }
+
+    // MARK: - Add device
+
+    private var addDeviceSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("This will create a small file for this Mac.")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Send it to whoever manages your server along with the steps that appear after. They just need to run a few commands — no restart required.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            instructionsToggle
+            errorAndActions(buildEnabled: true, buildLabel: "Create Device File")
+        }
+    }
+
+    // MARK: - Shared sub-views
 
     private var instructionsToggle: some View {
         Toggle(isOn: $exportInstructions) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Export setup instructions (.txt)")
+                Text("Also save a setup guide")
                     .font(.system(size: 12, weight: .medium))
-                Text("Creates a text file on your Desktop with the exact commands for your VPS.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Text("A plain-text file with the exact steps, saved next to your package.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
         .toggleStyle(.checkbox)
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 
     private func errorAndActions(buildEnabled: Bool, buildLabel: String) -> some View {
@@ -149,13 +181,12 @@ struct ServerWizardView: View {
             HStack {
                 if let back = onBack {
                     Button("← Go Back") { back() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if isBuilding {
                     ProgressView().controlSize(.small)
-                    Text("Building bundle…").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("Building…").font(.system(size: 12)).foregroundStyle(.secondary)
                 } else {
                     Button(buildLabel) { buildPackage() }
                         .buttonStyle(.borderedProminent)
@@ -174,7 +205,7 @@ struct ServerWizardView: View {
         } label: {
             VStack(spacing: 6) {
                 Text(label)
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .font(.system(size: 15, weight: .bold))
                 Text(subtitle)
                     .font(.system(size: 10))
                     .multilineTextAlignment(.center)
@@ -184,14 +215,10 @@ struct ServerWizardView: View {
             .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(detectedArch == arch
-                          ? Color.accentColor.opacity(0.12)
-                          : Color.primary.opacity(0.04))
+                    .fill(detectedArch == arch ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.04))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(detectedArch == arch
-                                    ? Color.accentColor
-                                    : Color.primary.opacity(0.1), lineWidth: 1.5)
+                            .stroke(detectedArch == arch ? Color.accentColor : Color.primary.opacity(0.1), lineWidth: 1.5)
                     )
             )
         }
@@ -204,7 +231,7 @@ struct ServerWizardView: View {
     private var deploySection: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label(mode == .firstTimeServer ? "Server package is ready!" : "Profile zip is ready!",
+                Label(mode == .firstTimeServer ? "Your server package is ready!" : "Your device file is ready!",
                       systemImage: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.green)
@@ -216,52 +243,33 @@ struct ServerWizardView: View {
             }
 
             Text(mode == .firstTimeServer
-                 ? "The zip contains the server binary and this device's profile."
-                 : "The zip contains only this device's profile. Drop it into the existing server's profiles dir.")
+                 ? "Follow the steps below to install it on your server. You can copy each command directly."
+                 : "Share the steps below with whoever manages your server. They just need to run these commands.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
 
-            if instructionsURL != nil {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Text("Setup instructions file is also on your Desktop.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, -8)
-            }
-
+            // SSH options
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("Include SSH login in commands", isOn: $includeSSH)
+                Toggle("Include upload commands", isOn: $includeSSH)
                     .toggleStyle(.switch)
                     .font(.system(size: 12, weight: .medium))
 
                 if includeSSH {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
-                            Image(systemName: "network").font(.system(size: 12)).foregroundStyle(.secondary)
-                                .frame(width: 14)
-                            Text("Server IP:").font(.system(size: 12)).foregroundStyle(.secondary)
-                                .frame(width: 70, alignment: .leading)
+                            Image(systemName: "network").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 14)
+                            Text("Server IP:").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
                             TextField("e.g. 85.34.12.99", text: $serverIP)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
                         }
-
                         if !serverIP.isEmpty && !serverIPValid {
                             Text("Enter a valid IPv4 address")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.red)
-                                .padding(.leading, 100)
+                                .font(.system(size: 10)).foregroundStyle(.red).padding(.leading, 100)
                         }
-
                         HStack(spacing: 10) {
-                            Image(systemName: "lock").font(.system(size: 12)).foregroundStyle(.secondary)
-                                .frame(width: 14)
-                            Text("Password:").font(.system(size: 12)).foregroundStyle(.secondary)
-                                .frame(width: 70, alignment: .leading)
-                            SecureField("Optional (for sshpass)", text: $serverPassword)
+                            Image(systemName: "lock").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 14)
+                            Text("Password:").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+                            SecureField("Optional", text: $serverPassword)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
                         }
@@ -293,7 +301,7 @@ struct ServerWizardView: View {
             Divider().opacity(0.15)
 
             HStack {
-                Button("← Re-package") {
+                Button("← Start Over") {
                     zipURL = nil
                     buildError = nil
                 }
@@ -302,13 +310,11 @@ struct ServerWizardView: View {
                 Spacer()
 
                 if onComplete != nil {
-                    Button("Finish Setup") {
-                        onComplete?()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle)
-                    .tint(.accentColor)
-                    .controlSize(.large)
+                    Button("All Done") { onComplete?() }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.roundedRectangle)
+                        .tint(.accentColor)
+                        .controlSize(.large)
                 }
             }
         }

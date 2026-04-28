@@ -3,6 +3,7 @@ import SwiftUI
 struct LogsView: View {
     @EnvironmentObject var app: AppState
     @State private var autoScroll = true
+    @State private var showCopiedFeedback = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -22,6 +23,27 @@ struct LogsView: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+            Button {
+                let allLogs = app.logs.map { "[\($0.timestamp.formatted())] \($0.text)" }.joined()
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(allLogs, forType: .string)
+                
+                withAnimation { showCopiedFeedback = true }
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    await MainActor.run { withAnimation { showCopiedFeedback = false } }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
+                    Text(showCopiedFeedback ? "Copied!" : "Copy")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(showCopiedFeedback ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(app.logs.isEmpty)
+
             Button {
                 app.clearLogs()
             } label: {

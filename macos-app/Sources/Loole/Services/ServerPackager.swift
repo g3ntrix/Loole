@@ -51,9 +51,10 @@ enum ServerPackager {
     static func buildPackage(
         mode: Mode,
         arch: String?,
+        exportInstructions: Bool,
         settings: AppSettings,
         store: ConfigStore
-    ) throws -> URL {
+    ) throws -> (zipURL: URL, instructionsURL: URL?) {
         let clientID = settings.clientID
         guard !clientID.isEmpty else { throw PackageError.missingClientID }
 
@@ -69,6 +70,11 @@ enum ServerPackager {
 
         let desktop = fm.urls(for: .desktopDirectory, in: .userDomainMask)[0]
         let zipURL: URL
+        let instructionsURL: URL?
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        let timestamp = formatter.string(from: Date())
 
         switch mode {
         case .firstTimeServer:
@@ -99,7 +105,9 @@ enum ServerPackager {
             """
             try runSh.write(to: tmp.appendingPathComponent("run.sh"), atomically: true, encoding: .utf8)
 
-            zipURL = desktop.appendingPathComponent("loole-server.zip")
+            let name = "loole-server-\(clientID)-\(timestamp)"
+            zipURL = desktop.appendingPathComponent("\(name).zip")
+            instructionsURL = exportInstructions ? desktop.appendingPathComponent("\(name)-setup.txt") : nil
 
         case .addClient:
             // Top-level <clientID>/ subdir so admin can `unzip -d /root/loole/profiles/`.
@@ -107,7 +115,9 @@ enum ServerPackager {
             try fm.createDirectory(at: profileDir, withIntermediateDirectories: true)
             try copyProfileFiles(into: profileDir, serverConfig: serverConfigSrc, store: store, fm: fm)
 
-            zipURL = desktop.appendingPathComponent("loole-profile-\(clientID).zip")
+            let name = "loole-profile-\(clientID)-\(timestamp)"
+            zipURL = desktop.appendingPathComponent("\(name).zip")
+            instructionsURL = exportInstructions ? desktop.appendingPathComponent("\(name)-setup.txt") : nil
         }
 
         if fm.fileExists(atPath: zipURL.path) { try fm.removeItem(at: zipURL) }
@@ -126,7 +136,59 @@ enum ServerPackager {
             throw PackageError.packagingFailed(errMsg)
         }
 
-        return zipURL
+        // Export instructions if requested
+        if let instructionsURL = instructionsURL {
+            let content = serverSideInstructions(mode: mode, zipName: zipURL.lastPathComponent)
+            try content.write(to: instructionsURL, atomically: true, encoding: .utf8)
+        }
+
+        return (zipURL, instructionsURL)
+    }
+
+    private static func serverSideInstructions(mode: Mode, zipName: String) -> String {
+        switch mode {
+        case .firstTimeServer:
+            return """
+            # Loole Server Setup Instructions
+            # Run these commands in the directory where you uploaded \(zipName) (usually /root)
+
+            # 1. Update and install unzip
+            apt-get update && apt-get install -y unzip
+
+            # 2. Extract the bundle
+            unzip -o \(zipName)
+
+            # 3. Set permissions
+            chmod +x server
+
+            # 4. Run the server in the background
+            nohup ./server -d /root/loole/profiles > loole.log 2>&1 &
+
+            echo "Server is now running!"
+            echo "You can check the logs with: tail -f loole.log"
+            """
+        case .addClient:
+            return """
+            # Loole Profile Setup Instructions
+            # IMPORTANT: Your server must already be running in multi-profile mode:
+            #   ./server -d /root/loole/profiles
+            # If it was deployed with an older single-profile setup (-c / -gc flags),
+            # redeploy it first using a "First-time setup" zip from any of your devices.
+
+            # Run these commands in the directory where you uploaded \(zipName)
+
+            # 1. Ensure profiles directory exists
+            mkdir -p /root/loole/profiles
+
+            # 2. Extract this profile into the profiles directory
+            unzip -o \(zipName) -d /root/loole/profiles/
+
+            # 3. Verify the server picked it up (check logs after ~5 seconds)
+            tail -n 20 /root/loole.log
+
+            echo "Profile added. If the server is in multi-profile mode, it loads within ~5 seconds."
+            """
+        }
     }
 
     private static func copyProfileFiles(into profileDir: URL, serverConfig: URL, store: ConfigStore, fm: FileManager) throws {

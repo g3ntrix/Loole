@@ -13,6 +13,8 @@ struct ServerWizardView: View {
     @State private var serverPassword: String = ""
     @State private var includeSSH = false
     @State private var zipURL: URL?
+    @State private var instructionsURL: URL?
+    @State private var exportInstructions = true
     @State private var isBuilding = false
     @State private var buildError: String?
 
@@ -92,6 +94,8 @@ struct ServerWizardView: View {
                 archButton(arch: "arm64", label: "aarch64", subtitle: "ARM64\n(Oracle/Ampere)")
             }
 
+            instructionsToggle
+
             errorAndActions(buildEnabled: detectedArch != nil, buildLabel: "Prepare Server Zip")
         }
     }
@@ -116,8 +120,24 @@ struct ServerWizardView: View {
             .background(Color.primary.opacity(0.04))
             .cornerRadius(8)
 
+            instructionsToggle
+
             errorAndActions(buildEnabled: true, buildLabel: "Prepare Profile Zip")
         }
+    }
+
+    private var instructionsToggle: some View {
+        Toggle(isOn: $exportInstructions) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Export setup instructions (.txt)")
+                    .font(.system(size: 12, weight: .medium))
+                Text("Creates a text file on your Desktop with the exact commands for your VPS.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .padding(.vertical, 4)
     }
 
     private func errorAndActions(buildEnabled: Bool, buildLabel: String) -> some View {
@@ -199,6 +219,18 @@ struct ServerWizardView: View {
                  ? "The zip contains the server binary and this device's profile."
                  : "The zip contains only this device's profile. Drop it into the existing server's profiles dir.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
+
+            if instructionsURL != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text("Setup instructions file is also on your Desktop.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, -8)
+            }
 
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Include SSH login in commands", isOn: $includeSSH)
@@ -299,16 +331,18 @@ struct ServerWizardView: View {
 
         Task {
             do {
-                let url = try ServerPackager.buildPackage(
+                let result = try ServerPackager.buildPackage(
                     mode: mode,
                     arch: detectedArch,
+                    exportInstructions: exportInstructions,
                     settings: app.settings,
                     store: store
                 )
                 await MainActor.run {
-                    zipURL = url
+                    zipURL = result.zipURL
+                    instructionsURL = result.instructionsURL
                     isBuilding = false
-                    ServerPackager.revealInFinder(url)
+                    ServerPackager.revealInFinder(result.zipURL)
                 }
             } catch {
                 await MainActor.run {

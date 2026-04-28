@@ -328,11 +328,16 @@ func (e *Engine) pollLoop(ctx context.Context) {
 					}
 					defer rc.Close()
 
-					// Extract ClientID from filename for server-side session initialization
+					// Extract ClientID from filename for server-side session initialization.
+					// Format: {dir}-{clientID}-mux-{timestamp}.bin
+					// clientID may itself contain dashes, so split on the first "-"
+					// and locate "-mux-" to find the boundary.
 					var fileClientID string
-					parts := strings.Split(fname, "-")
-					if len(parts) >= 4 && parts[2] == "mux" {
-						fileClientID = parts[1]
+					if dashIdx := strings.Index(fname, "-"); dashIdx >= 0 {
+						rest := fname[dashIdx+1:]
+						if muxIdx := strings.Index(rest, "-mux-"); muxIdx >= 0 {
+							fileClientID = rest[:muxIdx]
+						}
 					}
 
 					// STREAMING DECODE

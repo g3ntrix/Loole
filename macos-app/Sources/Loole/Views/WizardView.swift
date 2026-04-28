@@ -10,6 +10,7 @@ struct WizardView: View {
     @State private var isDraggingOver = false
     @State private var credentialsImported = false
 
+    @Environment(\.controlActiveState) var activeState
     private let store = ConfigStore()
 
     var body: some View {
@@ -146,6 +147,10 @@ struct WizardView: View {
                         .buttonBorderShape(.roundedRectangle)
                         .tint(.accentColor)
                         .controlSize(.large)
+                        .background(
+                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                 .fill(activeState == .inactive ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
                     }
                     .padding(.top, 8)
                 }
@@ -398,6 +403,10 @@ struct WizardView: View {
                         .buttonBorderShape(.roundedRectangle)
                         .tint(.accentColor)
                         .controlSize(.large)
+                        .background(
+                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                 .fill(activeState == .inactive ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
 
                     case .waitingForBrowser, .exchanging, .findingFolder:
                         ProgressView().controlSize(.small)
@@ -422,6 +431,10 @@ struct WizardView: View {
                         .buttonBorderShape(.roundedRectangle)
                         .tint(.accentColor)
                         .controlSize(.large)
+                        .background(
+                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                 .fill(activeState == .inactive ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
                     }
                 }
             }

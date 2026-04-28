@@ -16,6 +16,7 @@ struct ServerWizardView: View {
     @State private var isBuilding = false
     @State private var buildError: String?
 
+    @Environment(\.controlActiveState) var activeState
     private let store = ConfigStore()
 
     var body: some View {
@@ -193,6 +194,10 @@ struct ServerWizardView: View {
                         .buttonBorderShape(.roundedRectangle)
                         .tint(.accentColor)
                         .controlSize(.large)
+                        .background(
+                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                 .fill(activeState == .inactive ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
                         .disabled(!buildEnabled)
                 }
             }
@@ -315,6 +320,10 @@ struct ServerWizardView: View {
                         .buttonBorderShape(.roundedRectangle)
                         .tint(.accentColor)
                         .controlSize(.large)
+                        .background(
+                             RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                 .fill(activeState == .inactive ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
                 }
             }
         }

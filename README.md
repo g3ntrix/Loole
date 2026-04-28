@@ -3,9 +3,11 @@
 **Loole** is a modern, high-performance SOCKS5 tunnel designed to bypass network restrictions by leveraging Google Drive as a covert transport layer. It provides a premium macOS experience with an automated setup wizard.
 
 <div align="center">
-  <img src="macos-app/sc/1.png" width="32%" />
-  <img src="macos-app/sc/2.png" width="32%" />
-  <img src="macos-app/sc/3.png" width="32%" />
+  <img src="macos-app/sc/1.png" width="48%" />
+  <img src="macos-app/sc/4.png" width="48%" />
+  <br/>
+  <img src="macos-app/sc/2.png" width="48%" />
+  <img src="macos-app/sc/3.png" width="48%" />
 </div>
 
 ---
@@ -18,13 +20,15 @@
 - **One-Click System Proxy**: Toggle system-wide SOCKS5 proxy support instantly with passwordless privilege elevation (one-time setup).
 - **Built-in Server Packager**: Automatically packages your customized server binary for **x86_64** or **ARM64** architectures, ready to be dropped onto your VPS.
 - **Premium macOS UI**: Designed with native glassmorphism and modern aesthetics for a seamless desktop experience.
+- **Multi-Client Support**: Share a single server with multiple users. Each user maintains their own private data channel using their own Google account.
+- **Lightweight Server**: The server uses minimal CPU and RAM, making it easy to host on the cheapest VPS tiers or share with friends without performance impact.
 
 ---
 
 ## Requirements
 To use Loole, you will need:
-1.  **A Linux Server (VPS)**: Any basic VPS (Ubuntu/Debian recommended) to host the server-side tunnel.
-2.  **A Google Account**: To use Google Drive as the encrypted data channel.
+1.  **A Linux Server (VPS)**: A basic VPS (Ubuntu/Debian) to host the server-side tunnel. *Note: You can also use a server hosted by a friend!*
+2.  **A Google Account**: To use Google Drive as your private encrypted data channel.
 
 ---
 
@@ -32,6 +36,12 @@ To use Loole, you will need:
 Loole treats a hidden folder in your Google Drive as a bi-directional data queue:
 1.  **Client (Mac)**: Packages your local network requests into a compact binary protocol and uploads them to Drive.
 2.  **Server (VPS)**: Constantly polls the Drive folder, executes the requests, and uploads the responses back.
+
+### Multi-Tenancy
+The server is designed to be **stateless and multi-tenant**. Multiple users can connect to the same server simultaneously. Each client is identified by a unique ID, and the server isolates their traffic into separate folders. This means:
+- You only need **one server** for a group of people.
+- The server owner **never sees your data**; it flows directly through your own Google Drive.
+- Hosting for others takes **negligible resources** (typically < 50MB RAM).
 
 Since the traffic looks like legitimate Google API calls (Drive file movements), it is highly resistant to deep packet inspection (DPI) and blocking.
 

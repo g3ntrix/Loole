@@ -8,7 +8,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/NullLatency/flow-driver/internal/config"
 	"github.com/NullLatency/flow-driver/internal/httpclient"
@@ -17,18 +20,37 @@ import (
 )
 
 func main() {
-	var configPath, gcPath string
-	flag.StringVar(&configPath, "c", "config.json", "Path to config file")
-	flag.StringVar(&gcPath, "gc", "credentials.json", "Path to Google Service Account JSON")
+	var configPath, gcPath, profilesDir string
+	flag.StringVar(&configPath, "c", "config.json", "Path to config file (single-profile mode)")
+	flag.StringVar(&gcPath, "gc", "credentials.json", "Path to Google Service Account JSON (single-profile mode)")
+	flag.StringVar(&profilesDir, "d", "", "Path to a directory containing one subdirectory per client profile")
 	flag.Parse()
 
-	log.Println("Starting Flow Server...")
+	log.Println("Starting Loole Server...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if profilesDir != "" {
+		runMultiProfile(ctx, profilesDir)
+	} else {
+		if err := runProfile(ctx, "default", configPath, gcPath); err != nil {
+			log.Fatalf("Profile failed: %v", err)
+		}
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	log.Println("Shutting down server...")
+	cancel()
+}
+
+// runProfile starts one engine for the given config + credentials paths.
+// Returns once startup completes (engine goroutines keep running until ctx cancels).
+func runProfile(ctx context.Context, name, configPath, gcPath string) error {
 	appCfg, err := config.Load(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return fmt.Errorf("[%s] load config: %w", name, err)
 	}
 
 	var backend storage.Backend
@@ -38,36 +60,31 @@ func main() {
 	} else {
 		backend, err = storage.NewLocalBackend(appCfg.LocalDir)
 		if err != nil {
-			log.Fatalf("Failed to init local storage: %v", err)
+			return fmt.Errorf("[%s] init local storage: %w", name, err)
 		}
 	}
 	if err := backend.Login(ctx); err != nil {
-		log.Fatalf("Backend login failed: %v", err)
+		return fmt.Errorf("[%s] backend login: %w", name, err)
 	}
 
-	// AUTOMATION: If folder ID is missing, find or create it
 	if appCfg.StorageType == "google" && appCfg.GoogleFolderID == "" {
-		log.Println("Zero-Config: Searching for existing Google Drive folder 'Flow-Data'...")
+		log.Printf("[%s] Searching for Google Drive folder 'Flow-Data'...", name)
 		folderID, err := backend.FindFolder(ctx, "Flow-Data")
 		if err != nil {
-			log.Fatalf("Failed to search for folder: %v", err)
+			return fmt.Errorf("[%s] find folder: %w", name, err)
 		}
-
 		if folderID == "" {
-			log.Println("Zero-Config: 'Flow-Data' not found. Creating new folder...")
+			log.Printf("[%s] 'Flow-Data' not found. Creating new folder...", name)
 			folderID, err = backend.CreateFolder(ctx, "Flow-Data")
 			if err != nil {
-				log.Fatalf("Failed to auto-create folder: %v", err)
+				return fmt.Errorf("[%s] create folder: %w", name, err)
 			}
 		} else {
-			log.Printf("Zero-Config: Found existing folder with ID %s", folderID)
+			log.Printf("[%s] Found existing folder %s", name, folderID)
 		}
-
 		appCfg.GoogleFolderID = folderID
 		if err := appCfg.Save(configPath); err != nil {
-			log.Printf("Warning: Failed to save folder ID to %s: %v", configPath, err)
-		} else {
-			log.Printf("Zero-Config: Config updated with folder ID %s", folderID)
+			log.Printf("[%s] WARN: failed to save folder ID: %v", name, err)
 		}
 	}
 
@@ -79,19 +96,99 @@ func main() {
 		engine.SetFlushRate(appCfg.FlushRateMs)
 	}
 
-	// Called by polling loop when a new incoming session file is found
 	engine.OnNewSession = func(sessionID, targetAddr string, session *transport.Session) {
-		log.Printf("Server received new session %s destined for %s", sessionID, targetAddr)
+		log.Printf("[%s] new session %s -> %s", name, sessionID, targetAddr)
 		go handleServerConn(sessionID, targetAddr, session, engine)
 	}
 
 	engine.Start(ctx)
+	log.Printf("[%s] profile started", name)
+	return nil
+}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-	log.Println("Shutting down server...")
-	cancel()
+// runMultiProfile scans profilesDir for subdirectories, each containing
+// server_config.json + credentials.json (+ optional credentials.json.token).
+// Each subdir is launched as an isolated engine. The directory is re-scanned
+// periodically; new subdirs are started, removed subdirs are cancelled.
+func runMultiProfile(rootCtx context.Context, profilesDir string) {
+	if err := os.MkdirAll(profilesDir, 0755); err != nil {
+		log.Fatalf("Cannot create profiles dir %s: %v", profilesDir, err)
+	}
+	log.Printf("Multi-profile mode: scanning %s", profilesDir)
+
+	type running struct {
+		cancel context.CancelFunc
+	}
+	active := make(map[string]running)
+	var mu sync.Mutex
+
+	scan := func() {
+		entries, err := os.ReadDir(profilesDir)
+		if err != nil {
+			log.Printf("scan error: %v", err)
+			return
+		}
+		seen := make(map[string]bool)
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			seen[name] = true
+
+			mu.Lock()
+			_, alreadyRunning := active[name]
+			mu.Unlock()
+			if alreadyRunning {
+				continue
+			}
+
+			profileDir := filepath.Join(profilesDir, name)
+			cfgPath := filepath.Join(profileDir, "server_config.json")
+			credPath := filepath.Join(profileDir, "credentials.json")
+			if _, err := os.Stat(cfgPath); err != nil {
+				continue
+			}
+			if _, err := os.Stat(credPath); err != nil {
+				continue
+			}
+
+			profileCtx, cancel := context.WithCancel(rootCtx)
+			if err := runProfile(profileCtx, name, cfgPath, credPath); err != nil {
+				log.Printf("[%s] failed to start: %v", name, err)
+				cancel()
+				continue
+			}
+			mu.Lock()
+			active[name] = running{cancel: cancel}
+			mu.Unlock()
+		}
+
+		// Cancel engines whose subdir was removed
+		mu.Lock()
+		for name, r := range active {
+			if !seen[name] {
+				log.Printf("[%s] profile removed; stopping engine", name)
+				r.cancel()
+				delete(active, name)
+			}
+		}
+		mu.Unlock()
+	}
+
+	scan()
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-rootCtx.Done():
+				return
+			case <-ticker.C:
+				scan()
+			}
+		}
+	}()
 }
 
 func handleServerConn(sessionID, targetAddr string, session *transport.Session, engine *transport.Engine) {
@@ -100,14 +197,12 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 	conn, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		log.Printf("Dial error to %s: %v", targetAddr, err)
-		// Send back a close packet? Just closing the session will notify client
 		return
 	}
 	defer conn.Close()
 
 	errCh := make(chan error, 2)
 
-	// Conn -> Tx (Res)
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -122,7 +217,6 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 		}
 	}()
 
-	// Rx (Req) -> Conn
 	go func() {
 		for {
 			data, ok := <-session.RxChan

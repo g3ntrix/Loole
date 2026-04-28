@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// Step 3 of the wizard: package the server binary and give the user deploy commands.
+/// Also reachable post-setup via the "Deploy Server" tab to package additional clients.
 struct ServerWizardView: View {
     var onComplete: (() -> Void)?
     var onBack: (() -> Void)?
 
     @EnvironmentObject var app: AppState
+    @State private var mode: ServerPackager.Mode = .firstTimeServer
     @State private var detectedArch: String?
     @State private var serverIP: String = ""
     @State private var serverPassword: String = ""
@@ -23,7 +25,12 @@ struct ServerWizardView: View {
                     stepHeader
 
                     if zipURL == nil {
-                        archDetectionSection
+                        modePicker
+                        if mode == .firstTimeServer {
+                            archDetectionSection
+                        } else {
+                            addClientSection
+                        }
                     } else {
                         deploySection
                     }
@@ -45,33 +52,80 @@ struct ServerWizardView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Deploy Loole Server").font(.system(size: 18, weight: .bold))
-                Text("The server runs on your VPS and connects to your Drive folder.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Profile ID for this device: \(app.settings.clientID)")
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
             }
         }
     }
 
-    // MARK: - Arch detection
+    // MARK: - Mode picker
+
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Choose Setup Type").font(.system(size: 13, weight: .bold))
+            Picker("", selection: $mode) {
+                Text("First-time setup").tag(ServerPackager.Mode.firstTimeServer)
+                Text("Add to existing server").tag(ServerPackager.Mode.addClient)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Text(mode == .firstTimeServer
+                 ? "Build a full server bundle (binary + this device's profile). Use this if you don't have a Loole server running yet."
+                 : "Build a profile-only zip to add this device to an existing Loole server. The server hot-loads new profiles within ~5 seconds — no restart needed.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Arch detection (first-time)
 
     private var archDetectionSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("1. Confirm VPS CPU Architecture")
+            Text("Confirm VPS CPU Architecture")
                 .font(.system(size: 13, weight: .bold))
 
             Text("SSH into your server and run **`uname -m`**, then pick the result below:")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
 
-            // Arch selection buttons
             HStack(spacing: 12) {
                 archButton(arch: "amd64", label: "x86_64", subtitle: "Most common\n(Intel/AMD)")
                 archButton(arch: "arm64", label: "aarch64", subtitle: "ARM64\n(Oracle/Ampere)")
             }
 
+            errorAndActions(buildEnabled: detectedArch != nil, buildLabel: "Prepare Server Zip")
+        }
+    }
+
+    // MARK: - Add-client section (no arch, no binary)
+
+    private var addClientSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.badge.plus")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.accentColor)
+                Text("This will produce a small profile-only zip.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Make sure the existing server was deployed with Loole's multi-profile mode (`./server -d /root/loole/profiles`). Older single-profile deployments need to be re-deployed once.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+
+            errorAndActions(buildEnabled: true, buildLabel: "Prepare Profile Zip")
+        }
+    }
+
+    private func errorAndActions(buildEnabled: Bool, buildLabel: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             if let err = buildError {
                 Label(err, systemImage: "xmark.circle.fill")
                     .font(.system(size: 11)).foregroundStyle(.red)
             }
-
             HStack {
                 if let back = onBack {
                     Button("← Go Back") { back() }
@@ -83,14 +137,12 @@ struct ServerWizardView: View {
                     ProgressView().controlSize(.small)
                     Text("Building bundle…").font(.system(size: 12)).foregroundStyle(.secondary)
                 } else {
-                    Button("Prepare Server Zip") {
-                        buildPackage()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.roundedRectangle)
-                    .tint(.accentColor)
-                    .controlSize(.large)
-                    .disabled(detectedArch == nil)
+                    Button(buildLabel) { buildPackage() }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.roundedRectangle)
+                        .tint(.accentColor)
+                        .controlSize(.large)
+                        .disabled(!buildEnabled)
                 }
             }
         }
@@ -132,7 +184,8 @@ struct ServerWizardView: View {
     private var deploySection: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label("Server package is ready!", systemImage: "checkmark.circle.fill")
+                Label(mode == .firstTimeServer ? "Server package is ready!" : "Profile zip is ready!",
+                      systemImage: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.green)
                 Spacer()
@@ -142,7 +195,9 @@ struct ServerWizardView: View {
                 .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Color.accentColor)
             }
 
-            Text("The zip file contains everything your server needs.")
+            Text(mode == .firstTimeServer
+                 ? "The zip contains the server binary and this device's profile."
+                 : "The zip contains only this device's profile. Drop it into the existing server's profiles dir.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -161,14 +216,14 @@ struct ServerWizardView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12, design: .monospaced))
                         }
-                        
+
                         if !serverIP.isEmpty && !serverIPValid {
                             Text("Enter a valid IPv4 address")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.red)
                                 .padding(.leading, 100)
                         }
-                        
+
                         HStack(spacing: 10) {
                             Image(systemName: "lock").font(.system(size: 12)).foregroundStyle(.secondary)
                                 .frame(width: 14)
@@ -188,7 +243,16 @@ struct ServerWizardView: View {
 
             if let url = zipURL {
                 VStack(spacing: 12) {
-                    ForEach(ServerPackager.deploymentCommands(zipURL: url, serverIP: serverIP, includeSSH: includeSSH, serverPassword: serverPassword), id: \.label) { step in
+                    ForEach(
+                        ServerPackager.deploymentCommands(
+                            mode: mode,
+                            zipURL: url,
+                            clientID: app.settings.clientID,
+                            serverIP: serverIP,
+                            includeSSH: includeSSH,
+                            serverPassword: serverPassword
+                        ), id: \.label
+                    ) { step in
                         CodeBlock(label: step.label, code: step.code)
                     }
                 }
@@ -205,13 +269,15 @@ struct ServerWizardView: View {
 
                 Spacer()
 
-                Button("Finish Setup") {
-                    onComplete?()
+                if onComplete != nil {
+                    Button("Finish Setup") {
+                        onComplete?()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.roundedRectangle)
+                    .tint(.accentColor)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle)
-                .tint(.accentColor)
-                .controlSize(.large)
             }
         }
     }
@@ -227,14 +293,15 @@ struct ServerWizardView: View {
     // MARK: - Build
 
     private func buildPackage() {
-        guard let arch = detectedArch else { return }
+        if mode == .firstTimeServer && detectedArch == nil { return }
         isBuilding = true
         buildError = nil
 
         Task {
             do {
                 let url = try ServerPackager.buildPackage(
-                    arch: arch,
+                    mode: mode,
+                    arch: detectedArch,
                     settings: app.settings,
                     store: store
                 )

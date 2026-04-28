@@ -97,7 +97,11 @@ final class AppState: ObservableObject {
     private let core  = CoreManager()
 
     init() {
-        let loaded = ConfigStore().loadSettings() ?? .default
+        var loaded = ConfigStore().loadSettings() ?? .default
+        if loaded.clientID.isEmpty {
+            loaded.clientID = AppSettings.generateClientID()
+            ConfigStore().saveSettings(loaded)
+        }
         self.settings = loaded
         self.isWizardComplete = loaded.setupComplete
 

@@ -24,8 +24,25 @@ struct AppSettings: Equatable {
     var setupComplete: Bool = false
     var serverSetupComplete: Bool = false
     var theme: AppTheme = .system
+    var clientID: String = ""
 
     static let `default` = AppSettings()
+
+    /// Returns a slugified, collision-resistant profile name derived from
+    /// the local hostname (with a short random suffix for uniqueness). Used
+    /// once during first setup; persisted thereafter.
+    static func generateClientID() -> String {
+        let raw = ProcessInfo.processInfo.hostName
+            .lowercased()
+            .replacingOccurrences(of: ".local", with: "")
+        let slug = raw.unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
+            .reduce("") { $0 + String($1) }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let base = slug.isEmpty ? "client" : String(slug.prefix(24))
+        let suffix = String(UUID().uuidString.prefix(4)).lowercased()
+        return "\(base)-\(suffix)"
+    }
 
     var listenAddr: String { "\(listenHost):\(listenPort)" }
 
@@ -40,6 +57,7 @@ struct AppSettings: Equatable {
     func makeClientConfig() -> [String: Any] {
         [
             "listen_addr": listenAddr,
+            "client_id": clientID,
             "storage_type": "google",
             "google_folder_id": folderID,
             "refresh_rate_ms": refreshRateMs,
@@ -70,6 +88,7 @@ extension AppSettings: Codable {
         case refreshRateMs, flushRateMs
         case useSystemProxy, setupComplete, serverSetupComplete
         case theme
+        case clientID
         case listenAddr   // legacy — only read during migration
     }
 
@@ -83,6 +102,7 @@ extension AppSettings: Codable {
         setupComplete       = (try? c.decode(Bool.self,   forKey: .setupComplete))  ?? false
         serverSetupComplete = (try? c.decode(Bool.self,   forKey: .serverSetupComplete)) ?? false
         theme               = (try? c.decode(AppTheme.self, forKey: .theme)) ?? .system
+        clientID            = (try? c.decode(String.self,   forKey: .clientID)) ?? ""
 
         // Prefer new split fields; fall back to old listenAddr string.
         if let host = try? c.decode(String.self, forKey: .listenHost) {
@@ -107,5 +127,6 @@ extension AppSettings: Codable {
         try c.encode(setupComplete,       forKey: .setupComplete)
         try c.encode(serverSetupComplete, forKey: .serverSetupComplete)
         try c.encode(theme,               forKey: .theme)
+        try c.encode(clientID,            forKey: .clientID)
     }
 }

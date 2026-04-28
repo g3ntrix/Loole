@@ -131,7 +131,7 @@ struct StepIndicator: View {
         HStack(spacing: 6) {
             ForEach(0..<total, id: \.self) { i in
                 Capsule()
-                    .fill(i <= current ? Color.accentColor : Color.white.opacity(0.12))
+                    .fill(i <= current ? Color.accentColor : Color.primary.opacity(0.1))
                     .frame(height: 4)
                     .animation(.easeInOut(duration: 0.25), value: current)
             }

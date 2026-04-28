@@ -30,10 +30,10 @@ struct SettingsView: View {
                                 if lanIP == nil { lanIP = AppState.getLANIPAddress() }
                             }
                         }
-                        .background(Color.white.opacity(0.05))
+                        .background(Color.primary.opacity(0.05))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1))
 
                         if app.settingsDraft?.listenHost == "0.0.0.0" {
                             HStack(spacing: 6) {

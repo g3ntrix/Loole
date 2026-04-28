@@ -284,7 +284,7 @@ struct WizardView: View {
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    isDraggingOver ? Color.accentColor : Color.white.opacity(0.1),
+                    isDraggingOver ? Color.accentColor : Color.primary.opacity(0.1),
                     style: StrokeStyle(lineWidth: 2, dash: [6])
                 )
                 .background(

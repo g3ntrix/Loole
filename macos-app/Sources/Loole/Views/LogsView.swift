@@ -97,7 +97,7 @@ struct LogsView: View {
         switch line.stream {
         case .system: return Color.accentColor.opacity(0.8)
         case .stderr: return Color.orange
-        case .stdout: return Color.white.opacity(0.75)
+        case .stdout: return Color.primary.opacity(0.8)
         }
     }
 }

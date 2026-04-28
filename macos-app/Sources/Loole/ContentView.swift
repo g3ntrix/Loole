@@ -127,7 +127,7 @@ struct ContentView: View {
         case .running:              return .green
         case .starting, .stopping:  return .yellow
         case .error:                return .orange
-        case .stopped:              return Color.white.opacity(0.25)
+        case .stopped:              return .secondary.opacity(0.4)
         }
     }
 }

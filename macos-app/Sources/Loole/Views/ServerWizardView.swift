@@ -20,9 +20,24 @@ struct ServerWizardView: View {
     private let store = ConfigStore()
 
     var body: some View {
+        if isEmbeddedInSetupWizard {
+            content
+        } else {
+            ScrollView {
+                content
+                    .padding(.vertical, 24)
+            }
+        }
+    }
+
+    private var isEmbeddedInSetupWizard: Bool {
+        onBack != nil || onComplete != nil
+    }
+
+    private var content: some View {
         VStack {
             Card {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: zipURL == nil ? 24 : 14) {
                     stepHeader
 
                     if zipURL == nil {
@@ -234,7 +249,7 @@ struct ServerWizardView: View {
     // MARK: - Deploy section
 
     private var deploySection: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label(mode == .firstTimeServer ? "Your server package is ready!" : "Your device file is ready!",
                       systemImage: "checkmark.circle.fill")
@@ -248,15 +263,18 @@ struct ServerWizardView: View {
             }
 
             Text(mode == .firstTimeServer
-                 ? "Follow the steps below to install it on your server. You can copy each command directly."
-                 : "Share the steps below with whoever manages your server. They just need to run these commands.")
+                 ? "Run these in order. Install & Restart also stops any previous Loole server first."
+                 : "Run these in order on the existing server.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
 
             // SSH options
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Include upload commands", isOn: $includeSSH)
-                    .toggleStyle(.switch)
-                    .font(.system(size: 12, weight: .medium))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Toggle("Include upload commands", isOn: $includeSSH)
+                        .toggleStyle(.switch)
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                }
 
                 if includeSSH {
                     VStack(alignment: .leading, spacing: 10) {
@@ -282,25 +300,45 @@ struct ServerWizardView: View {
                     .padding(.bottom, 4)
                 }
             }
-            .padding(12)
+            .padding(10)
             .background(Color.primary.opacity(0.04))
             .cornerRadius(8)
 
             if let url = zipURL {
-                VStack(spacing: 12) {
-                    ForEach(
-                        ServerPackager.deploymentCommands(
-                            mode: mode,
-                            zipURL: url,
-                            clientID: app.settings.clientID,
-                            serverIP: serverIP,
-                            includeSSH: includeSSH,
-                            serverPassword: serverPassword
-                        ), id: \.label
-                    ) { step in
-                        CodeBlock(label: step.label, code: step.code)
+                let steps = ServerPackager.deploymentCommands(
+                    mode: mode,
+                    zipURL: url,
+                    clientID: app.settings.clientID,
+                    serverIP: serverIP,
+                    includeSSH: includeSSH,
+                    serverPassword: serverPassword
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Commands")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        CopyButton(text: steps.map { $0.code }.joined(separator: "\n"))
                     }
+
+                    ScrollView {
+                        LazyVStack(spacing: 6) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                                CompactCommandRow(number: index + 1, label: step.label, code: step.code)
+                            }
+                        }
+                        .padding(1)
+                    }
+                    .frame(maxHeight: mode == .firstTimeServer ? 230 : 190)
                 }
+                .padding(10)
+                .background(Color.primary.opacity(0.035))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
             }
 
             Divider().opacity(0.15)
@@ -366,5 +404,42 @@ struct ServerWizardView: View {
                 }
             }
         }
+    }
+}
+
+private struct CompactCommandRow: View {
+    let number: Int
+    let label: String
+    let code: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("\(number)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.accentColor.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(label.hasPrefix("Optional") ? .secondary : .primary)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(code)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            CopyButton(text: code)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.035))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 }

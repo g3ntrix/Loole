@@ -153,22 +153,14 @@ enum ServerPackager {
             # Loole Server Setup Instructions
             # Run these commands in the directory where you uploaded \(zipName) (usually /root)
 
-            # 1. Update and install unzip
-            apt-get update && apt-get install -y unzip
+            # 1. Install dependencies and extract the bundle
+            apt-get update && apt-get install -y unzip && unzip -o \(zipName) && chmod +x server
 
-            # 2. Extract the bundle
-            unzip -o \(zipName)
-
-            # 3. Set permissions
-            chmod +x server
-
-            # 4. Stop any previous Loole server
+            # 2. Restart Loole server
             pkill -f "[.]/server -d /root/loole/profiles" 2>/dev/null || true
-
-            # 5. Run the server in the background
             nohup ./server -d /root/loole/profiles > loole.log 2>&1 &
 
-            # 6. Verify startup
+            # 3. Verify startup
             sleep 2
             if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
               echo "OK: Loole server process is running"
@@ -260,6 +252,7 @@ enum ServerPackager {
             scpCmd = "scp"
         }
         let stopPrevious = "pkill -f \"[.]/server -d /root/loole/profiles\" 2>/dev/null || true"
+        let installAndRestart = "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server && { \(stopPrevious); } && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &"
         let localVerify = "sleep 2; if pgrep -af \"[.]\\/server -d /root/loole/profiles\" >/dev/null; then echo \"OK: Loole server process is running\"; else echo \"ERROR: Loole server process is not running\"; exit 1; fi; if grep -q \"high-speed profile started\" /root/loole.log; then echo \"OK: Loole profile loaded\"; else echo \"WARN: Loole profile has not loaded yet; recent logs:\"; tail -n 40 /root/loole.log; fi"
         let remoteVerify = "\(sshCmd) \(user)@\(target) '\(localVerify)'"
 
@@ -267,57 +260,45 @@ enum ServerPackager {
         case .firstTimeServer:
             if !includeSSH {
                 return [
-                    (label: "1. Upload to Server",
+                    (label: "Upload",
                      code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
-                    (label: "2. Install Unzip & Extract",
-                     code: "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server"),
-                    (label: "3. Stop Previous Loole Server",
-                     code: stopPrevious),
-                    (label: "4. Run (Background)",
-                     code: "cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &"),
-                    (label: "5. Verify Startup",
+                    (label: "Install & Restart",
+                     code: installAndRestart),
+                    (label: "Verify",
                      code: localVerify),
-                    (label: "6. Watch Live Logs",
-                     code: "tail -f /root/loole.log"),
-                    (label: "7. Terminate",
-                     code: "pkill -f '^./server'")
+                    (label: "Optional: Watch Logs",
+                     code: "tail -f /root/loole.log")
                 ]
             }
             return [
-                (label: "1. Upload to Server",
+                (label: "Upload",
                  code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
-                (label: "2. Install Unzip & Extract",
-                 code: "\(sshCmd) \(user)@\(target) 'apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server'"),
-                (label: "3. Stop Previous Loole Server",
-                 code: "\(sshCmd) \(user)@\(target) '\(stopPrevious)'"),
-                (label: "4. Run (Background)",
-                 code: "\(sshCmd) \(user)@\(target) 'cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &'"),
-                (label: "5. Verify Startup",
+                (label: "Install & Restart",
+                 code: "\(sshCmd) \(user)@\(target) '\(installAndRestart)'"),
+                (label: "Verify",
                  code: remoteVerify),
-                (label: "6. Watch Live Logs",
-                 code: "\(sshCmd) \(user)@\(target) 'tail -f /root/loole.log'"),
-                (label: "7. Terminate",
-                 code: "\(sshCmd) \(user)@\(target) 'pkill -f ./server'")
+                (label: "Optional: Watch Logs",
+                 code: "\(sshCmd) \(user)@\(target) 'tail -f /root/loole.log'")
             ]
 
         case .addClient:
             // No restart needed — the server polls /root/loole/profiles every 5s.
             if !includeSSH {
                 return [
-                    (label: "1. Upload to Server",
+                    (label: "Upload",
                      code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
-                    (label: "2. Extract into profiles dir",
+                    (label: "Install Profile",
                      code: "mkdir -p /root/loole/profiles && cd /root && unzip -o \(zipName) -d /root/loole/profiles/"),
-                    (label: "3. Verify Profile",
+                    (label: "Verify",
                      code: "sleep 6; \(localVerify)")
                 ]
             }
             return [
-                (label: "1. Upload to Server",
+                (label: "Upload",
                  code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
-                (label: "2. Extract into profiles dir",
+                (label: "Install Profile",
                  code: "\(sshCmd) \(user)@\(target) 'mkdir -p /root/loole/profiles && cd /root && unzip -o \(zipName) -d /root/loole/profiles/'"),
-                (label: "3. Verify Profile",
+                (label: "Verify",
                  code: "\(sshCmd) \(user)@\(target) 'sleep 6; \(localVerify)'")
             ]
         }

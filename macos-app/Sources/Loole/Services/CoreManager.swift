@@ -10,6 +10,7 @@ final class CoreManager {
     private var process: Process?
     private var pipe: Pipe?
     private var userInitiatedStop = false
+    private var lastExitStatus: Int32?
 
     func start(settings: AppSettings, credentialsURL: URL) async throws {
         await stop()
@@ -23,6 +24,7 @@ final class CoreManager {
 
         let store = ConfigStore()
         let configURL = try store.writeClientConfig(settings)
+        lastExitStatus = nil
 
         stripQuarantine(at: clientURL)
 
@@ -52,6 +54,7 @@ final class CoreManager {
             let initiated = self.userInitiatedStop
             self.userInitiatedStop = false
             let status = proc.terminationStatus
+            self.lastExitStatus = status
             let cleanSignal = proc.terminationReason == .uncaughtSignal &&
                               (status == SIGTERM || status == SIGKILL)
 
@@ -83,7 +86,10 @@ final class CoreManager {
                     NSLocalizedDescriptionKey: "SOCKS5 listener on \(host):\(settings.socksPort) didn't come up. Check Logs."
                 ])
             }
-            return
+            let status = lastExitStatus.map { " (\($0))" } ?? ""
+            throw NSError(domain: "Loole", code: 12, userInfo: [
+                NSLocalizedDescriptionKey: "loole-client exited before the SOCKS5 listener was ready\(status). Check Logs."
+            ])
         }
         log("[CoreManager] Ready. SOCKS5 on \(host):\(settings.socksPort)\n")
         onStatus?(.running)

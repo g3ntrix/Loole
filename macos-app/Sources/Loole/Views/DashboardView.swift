@@ -181,7 +181,6 @@ struct DashboardView: View {
                     if app.settings.isLAN, let ip = AppState.getLANIPAddress() {
                         statRow(label: "LAN IP", value: ip)
                     }
-                    statRow(label: "Poll / Flush", value: "\(app.settings.refreshRateMs) ms / \(app.settings.flushRateMs) ms")
                 }
             }
         }

@@ -70,45 +70,8 @@ struct SettingsView: View {
                     }
                 }
 
-                // MARK: Timing & Appearance
+                // MARK: Appearance
                 HStack(alignment: .top, spacing: 20) {
-                    section("Timing") {
-                        VStack(alignment: .leading, spacing: 14) {
-                            settingRow(label: "Poll Rate") {
-                                HStack(spacing: 6) {
-                                    TextField("200", text: $app.draftPoll)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 60)
-                                        .font(.system(size: 12, design: .monospaced))
-                                        .onChange(of: app.draftPoll) { v in
-                                            if let n = Int(v), n > 0 { app.settingsDraft?.refreshRateMs = n }
-                                        }
-                                    Text("ms").font(.system(size: 11)).foregroundStyle(.secondary)
-                                }
-                            }
-
-                            settingRow(label: "Flush Rate") {
-                                HStack(spacing: 6) {
-                                    TextField("300", text: $app.draftFlush)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 60)
-                                        .font(.system(size: 12, design: .monospaced))
-                                        .onChange(of: app.draftFlush) { v in
-                                            if let n = Int(v), n > 0 { app.settingsDraft?.flushRateMs = n }
-                                        }
-                                    Text("ms").font(.system(size: 11)).foregroundStyle(.secondary)
-                                }
-                            }
-
-                            Text("Lower rates reduce latency but increase API calls.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxHeight: .infinity, alignment: .top)
-                    }
-                    .frame(maxWidth: .infinity)
-
                     section("Appearance") {
                         VStack(alignment: .leading, spacing: 14) {
                             settingRow(label: "Theme") {
@@ -233,8 +196,6 @@ struct SettingsView: View {
         if app.settingsDraft == nil {
             app.settingsDraft = app.settings
             app.draftPort = "\(app.settings.listenPort)"
-            app.draftPoll = "\(app.settings.refreshRateMs)"
-            app.draftFlush = "\(app.settings.flushRateMs)"
         }
         lanIP = AppState.getLANIPAddress()
     }

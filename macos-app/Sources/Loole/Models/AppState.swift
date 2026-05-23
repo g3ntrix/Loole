@@ -86,8 +86,6 @@ final class AppState: ObservableObject {
     // Drafts for persistent UI state during refreshes
     @Published var settingsDraft: AppSettings?
     @Published var draftPort: String = ""
-    @Published var draftPoll: String = ""
-    @Published var draftFlush: String = ""
 
     private var lastTX: UInt64 = 0
     private var lastRX: UInt64 = 0

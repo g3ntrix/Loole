@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/NullLatency/flow-driver/internal/config"
+	"github.com/NullLatency/flow-driver/internal/flow"
 	"github.com/NullLatency/flow-driver/internal/httpclient"
 	"github.com/NullLatency/flow-driver/internal/storage"
 	"github.com/NullLatency/flow-driver/internal/transport"
@@ -48,6 +49,16 @@ func main() {
 	appCfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	if appCfg.StorageType == "google" && appCfg.GoogleFolderID != "" {
+		ensureClientID(appCfg, configPath)
+		listenAddr := appCfg.ListenAddr
+		if listenAddr == "" {
+			listenAddr = "127.0.0.1:1080"
+		}
+		runFlowClient(ctx, cancel, appCfg, gcPath, listenAddr)
+		return
 	}
 
 	var backend storage.Backend
@@ -92,8 +103,19 @@ func main() {
 
 	cid := appCfg.ClientID
 	if cid == "" {
-		cid = generateSessionID()[:8] // Short random ID as fallback
+		cid = ensureClientID(appCfg, configPath)
 	}
+
+	listenAddr := appCfg.ListenAddr
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:1080"
+	}
+
+	if appCfg.StorageType == "google" {
+		runFlowClient(ctx, cancel, appCfg, gcPath, listenAddr)
+		return
+	}
+
 	engine := transport.NewEngine(backend, true, cid)
 	if appCfg.RefreshRateMs > 0 {
 		engine.SetPollRate(appCfg.RefreshRateMs)
@@ -102,11 +124,6 @@ func main() {
 		engine.SetFlushRate(appCfg.FlushRateMs)
 	}
 	engine.Start(ctx)
-
-	listenAddr := appCfg.ListenAddr
-	if listenAddr == "" {
-		listenAddr = "127.0.0.1:1080"
-	}
 
 	// Create the library SOCKS5 server wrapping our custom Google Drive Engine tunnel
 	server := socks5.NewServer(
@@ -174,4 +191,61 @@ func main() {
 	<-sigCh
 	log.Println("Shutting down client...")
 	cancel()
+}
+
+func ensureClientID(appCfg *config.AppConfig, configPath string) string {
+	cid := appCfg.ClientID
+	if cid != "" {
+		return cid
+	}
+	cid = generateSessionID()[:16]
+	appCfg.ClientID = cid
+	if err := appCfg.Save(configPath); err != nil {
+		log.Printf("Warning: Failed to save generated client ID to %s: %v", configPath, err)
+	}
+	return cid
+}
+
+func runFlowClient(ctx context.Context, cancel context.CancelFunc, appCfg *config.AppConfig, gcPath, listenAddr string) {
+	flowCfg, err := config.BuildFlowConfig(appCfg, gcPath, listenAddr, true)
+	if err != nil {
+		log.Fatalf("High-speed transport config failed: %v", err)
+	}
+	log.Printf("Initializing Loole high-speed Drive transport...")
+	data, err := flow.StoresFromConfig(ctx, flowCfg)
+	if err != nil {
+		log.Fatalf("High-speed storage init failed: %v", err)
+	}
+	tunnel, err := flow.NewTunnel(data, flowCfg)
+	if err != nil {
+		log.Fatalf("High-speed transport init failed: %v", err)
+	}
+
+	log.Printf("Listening for SOCKS5 on %s using Loole high-speed Drive transport...", listenAddr)
+	go func() {
+		if err := tunnel.ServeClient(ctx, listenAddr); err != nil && ctx.Err() == nil {
+			log.Fatalf("SOCKS5 server failed: %v", err)
+		}
+	}()
+	go reportFlowStats(ctx, tunnel)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	log.Println("Shutting down client...")
+	cancel()
+}
+
+func reportFlowStats(ctx context.Context, tunnel *flow.Tunnel) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tx, rx := tunnel.GetStats()
+			log.Printf("STATS|TX:%d|RX:%d", tx, rx)
+		}
+	}
 }

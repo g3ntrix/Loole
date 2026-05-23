@@ -18,8 +18,6 @@ struct AppSettings: Equatable {
     var folderID: String = ""
     var listenHost: String = "127.0.0.1"   // "127.0.0.1" (Local) or "0.0.0.0" (LAN)
     var listenPort: Int = 1080
-    var refreshRateMs: Int = 200
-    var flushRateMs: Int = 300
     var useSystemProxy: Bool = false
     var setupComplete: Bool = false
     var serverSetupComplete: Bool = false
@@ -60,8 +58,6 @@ struct AppSettings: Equatable {
             "client_id": clientID,
             "storage_type": "google",
             "google_folder_id": folderID,
-            "refresh_rate_ms": refreshRateMs,
-            "flush_rate_ms": flushRateMs,
             "transport": [
                 "TargetIP": "216.239.38.120:443",
                 "SNI": "google.com",
@@ -74,9 +70,7 @@ struct AppSettings: Equatable {
     func makeServerConfig() -> [String: Any] {
         [
             "storage_type": "google",
-            "google_folder_id": folderID,
-            "refresh_rate_ms": refreshRateMs,
-            "flush_rate_ms": flushRateMs
+            "google_folder_id": folderID
         ]
     }
 }
@@ -85,7 +79,6 @@ extension AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case credentialsFilename, folderID
         case listenHost, listenPort
-        case refreshRateMs, flushRateMs
         case useSystemProxy, setupComplete, serverSetupComplete
         case theme
         case clientID
@@ -96,8 +89,6 @@ extension AppSettings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         credentialsFilename = (try? c.decode(String.self, forKey: .credentialsFilename)) ?? "credentials.json"
         folderID            = (try? c.decode(String.self, forKey: .folderID)) ?? ""
-        refreshRateMs       = (try? c.decode(Int.self,    forKey: .refreshRateMs)) ?? 200
-        flushRateMs         = (try? c.decode(Int.self,    forKey: .flushRateMs))   ?? 300
         useSystemProxy      = (try? c.decode(Bool.self,   forKey: .useSystemProxy)) ?? false
         setupComplete       = (try? c.decode(Bool.self,   forKey: .setupComplete))  ?? false
         serverSetupComplete = (try? c.decode(Bool.self,   forKey: .serverSetupComplete)) ?? false
@@ -121,8 +112,6 @@ extension AppSettings: Codable {
         try c.encode(folderID,            forKey: .folderID)
         try c.encode(listenHost,          forKey: .listenHost)
         try c.encode(listenPort,          forKey: .listenPort)
-        try c.encode(refreshRateMs,       forKey: .refreshRateMs)
-        try c.encode(flushRateMs,         forKey: .flushRateMs)
         try c.encode(useSystemProxy,      forKey: .useSystemProxy)
         try c.encode(setupComplete,       forKey: .setupComplete)
         try c.encode(serverSetupComplete, forKey: .serverSetupComplete)

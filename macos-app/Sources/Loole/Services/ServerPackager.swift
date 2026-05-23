@@ -164,8 +164,23 @@ enum ServerPackager {
             # 4. Run the server in the background
             nohup ./server -d /root/loole/profiles > loole.log 2>&1 &
 
-            echo "Server is now running!"
-            echo "You can check the logs with: tail -f loole.log"
+            # 5. Verify startup
+            sleep 2
+            if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
+              echo "OK: Loole server process is running"
+            else
+              echo "ERROR: Loole server process is not running"
+              exit 1
+            fi
+            if grep -q 'high-speed profile started' loole.log; then
+              echo "OK: Loole profile loaded"
+            else
+              echo "WARN: Loole profile has not loaded yet; recent logs:"
+              tail -n 40 loole.log
+            fi
+
+            # Optional: watch live logs
+            tail -f loole.log
             """
         case .addClient:
             return """
@@ -183,8 +198,20 @@ enum ServerPackager {
             # 2. Extract this profile into the profiles directory
             unzip -o \(zipName) -d /root/loole/profiles/
 
-            # 3. Verify the server picked it up (check logs after ~5 seconds)
-            tail -n 20 /root/loole.log
+            # 3. Verify the server picked it up
+            sleep 6
+            if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
+              echo "OK: Loole server process is running"
+            else
+              echo "ERROR: Loole server process is not running"
+              exit 1
+            fi
+            if grep -q 'high-speed profile started' /root/loole.log; then
+              echo "OK: Loole profile loaded"
+            else
+              echo "WARN: Loole profile has not loaded yet; recent logs:"
+              tail -n 40 /root/loole.log
+            fi
 
             echo "Profile added. If the server is in multi-profile mode, it loads within ~5 seconds."
             """
@@ -228,6 +255,8 @@ enum ServerPackager {
             sshCmd = "ssh"
             scpCmd = "scp"
         }
+        let localVerify = "sleep 2; if pgrep -af \"[.]\\/server -d /root/loole/profiles\" >/dev/null; then echo \"OK: Loole server process is running\"; else echo \"ERROR: Loole server process is not running\"; exit 1; fi; if grep -q \"high-speed profile started\" /root/loole.log; then echo \"OK: Loole profile loaded\"; else echo \"WARN: Loole profile has not loaded yet; recent logs:\"; tail -n 40 /root/loole.log; fi"
+        let remoteVerify = "\(sshCmd) \(user)@\(target) '\(localVerify)'"
 
         switch mode {
         case .firstTimeServer:
@@ -239,9 +268,11 @@ enum ServerPackager {
                      code: "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server"),
                     (label: "3. Run (Background)",
                      code: "cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &"),
-                    (label: "4. Show Logs",
+                    (label: "4. Verify Startup",
+                     code: localVerify),
+                    (label: "5. Watch Live Logs",
                      code: "tail -f /root/loole.log"),
-                    (label: "5. Terminate",
+                    (label: "6. Terminate",
                      code: "pkill -f '^./server'")
                 ]
             }
@@ -252,9 +283,11 @@ enum ServerPackager {
                  code: "\(sshCmd) \(user)@\(target) 'apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server'"),
                 (label: "3. Run (Background)",
                  code: "\(sshCmd) \(user)@\(target) 'cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &'"),
-                (label: "4. Show Logs",
+                (label: "4. Verify Startup",
+                 code: remoteVerify),
+                (label: "5. Watch Live Logs",
                  code: "\(sshCmd) \(user)@\(target) 'tail -f /root/loole.log'"),
-                (label: "5. Terminate",
+                (label: "6. Terminate",
                  code: "\(sshCmd) \(user)@\(target) 'pkill -f ./server'")
             ]
 
@@ -266,8 +299,8 @@ enum ServerPackager {
                      code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
                     (label: "2. Extract into profiles dir",
                      code: "mkdir -p /root/loole/profiles && cd /root && unzip -o \(zipName) -d /root/loole/profiles/"),
-                    (label: "3. Verify (within ~5s, server picks up the new profile)",
-                     code: "tail -n 20 /root/loole.log")
+                    (label: "3. Verify Profile",
+                     code: "sleep 6; \(localVerify)")
                 ]
             }
             return [
@@ -275,8 +308,8 @@ enum ServerPackager {
                  code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
                 (label: "2. Extract into profiles dir",
                  code: "\(sshCmd) \(user)@\(target) 'mkdir -p /root/loole/profiles && cd /root && unzip -o \(zipName) -d /root/loole/profiles/'"),
-                (label: "3. Verify (within ~5s, server picks up the new profile)",
-                 code: "\(sshCmd) \(user)@\(target) 'tail -n 20 /root/loole.log'")
+                (label: "3. Verify Profile",
+                 code: "\(sshCmd) \(user)@\(target) 'sleep 6; \(localVerify)'")
             ]
         }
     }

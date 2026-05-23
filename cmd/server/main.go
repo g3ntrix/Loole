@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/NullLatency/flow-driver/internal/config"
+	"github.com/NullLatency/flow-driver/internal/flow"
 	"github.com/NullLatency/flow-driver/internal/httpclient"
 	"github.com/NullLatency/flow-driver/internal/storage"
 	"github.com/NullLatency/flow-driver/internal/transport"
@@ -53,6 +54,10 @@ func runProfile(ctx context.Context, name, configPath, gcPath string) error {
 		return fmt.Errorf("[%s] load config: %w", name, err)
 	}
 
+	if appCfg.StorageType == "google" && appCfg.GoogleFolderID != "" {
+		return runFlowProfile(ctx, name, appCfg, gcPath)
+	}
+
 	var backend storage.Backend
 	if appCfg.StorageType == "google" {
 		customHttpClient := httpclient.NewCustomClient(appCfg.Transport)
@@ -88,6 +93,10 @@ func runProfile(ctx context.Context, name, configPath, gcPath string) error {
 		}
 	}
 
+	if appCfg.StorageType == "google" {
+		return runFlowProfile(ctx, name, appCfg, gcPath)
+	}
+
 	engine := transport.NewEngine(backend, false, "")
 	if appCfg.RefreshRateMs > 0 {
 		engine.SetPollRate(appCfg.RefreshRateMs)
@@ -103,6 +112,29 @@ func runProfile(ctx context.Context, name, configPath, gcPath string) error {
 
 	engine.Start(ctx)
 	log.Printf("[%s] profile started", name)
+	return nil
+}
+
+func runFlowProfile(ctx context.Context, name string, appCfg *config.AppConfig, gcPath string) error {
+	flowCfg, err := config.BuildFlowConfig(appCfg, gcPath, "", false)
+	if err != nil {
+		return fmt.Errorf("[%s] high-speed transport config: %w", name, err)
+	}
+	log.Printf("[%s] initializing high-speed Drive transport", name)
+	data, err := flow.StoresFromConfig(ctx, flowCfg)
+	if err != nil {
+		return fmt.Errorf("[%s] high-speed storage init: %w", name, err)
+	}
+	tunnel, err := flow.NewTunnel(data, flowCfg)
+	if err != nil {
+		return fmt.Errorf("[%s] high-speed transport init: %w", name, err)
+	}
+	go func() {
+		if err := tunnel.ServeExit(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("[%s] high-speed exit failed: %v", name, err)
+		}
+	}()
+	log.Printf("[%s] high-speed profile started", name)
 	return nil
 }
 

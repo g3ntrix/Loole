@@ -102,6 +102,7 @@ final class AppState: ObservableObject {
         }
         self.settings = loaded
         self.isWizardComplete = loaded.setupComplete
+        core.setLogCaptureEnabled(loaded.logsEnabled)
 
         core.onLog = { [weak self] line in
             Task { @MainActor in self?.appendLog(line) }
@@ -221,6 +222,15 @@ final class AppState: ObservableObject {
 
     func saveSettings() { store.saveSettings(settings) }
 
+    func setLogsEnabled(_ enabled: Bool) {
+        settings.logsEnabled = enabled
+        core.setLogCaptureEnabled(enabled)
+        if !enabled {
+            logs.removeAll()
+        }
+        store.saveSettings(settings)
+    }
+
     func completeWizard() {
         settings.setupComplete = true
         store.saveSettings(settings)
@@ -259,6 +269,7 @@ final class AppState: ObservableObject {
     // MARK: - Logs
 
     func appendLog(_ line: LogLine) {
+        guard settings.logsEnabled else { return }
         if logs.count > 3000 { logs.removeFirst(500) }
         logs.append(line)
     }

@@ -19,6 +19,14 @@ struct LogsView: View {
             Text("Logs")
                 .font(.system(size: 14, weight: .semibold))
             Spacer()
+            Toggle("Capture", isOn: Binding(
+                get: { app.settings.logsEnabled },
+                set: { app.setLogsEnabled($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
             Toggle("Auto-scroll", isOn: $autoScroll)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
@@ -58,6 +66,27 @@ struct LogsView: View {
     }
 
     private var logList: some View {
+        if !app.settings.logsEnabled {
+            return AnyView(
+                VStack(spacing: 12) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                    Text("Log capture is off")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Turn it on when troubleshooting. Speed stats continue in the background.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Button("Enable Logs") {
+                        app.setLogsEnabled(true)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            )
+        }
+
+        return AnyView(
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -75,6 +104,7 @@ struct LogsView: View {
                 }
             }
         }
+        )
     }
 
     private func logRow(_ line: LogLine) -> some View {

@@ -7,10 +7,18 @@ final class CoreManager {
     var onStatus: ((AppState.Status) -> Void)?
     var onSpeedUpdate: ((UInt64, UInt64) -> Void)?
 
+    private let logLock = NSLock()
+    private var captureLogs = false
     private var process: Process?
     private var pipe: Pipe?
     private var userInitiatedStop = false
     private var lastExitStatus: Int32?
+
+    func setLogCaptureEnabled(_ enabled: Bool) {
+        logLock.lock()
+        captureLogs = enabled
+        logLock.unlock()
+    }
 
     func start(settings: AppSettings, credentialsURL: URL) async throws {
         await stop()
@@ -83,12 +91,12 @@ final class CoreManager {
         if !ready {
             if process != nil {
                 throw NSError(domain: "Loole", code: 11, userInfo: [
-                    NSLocalizedDescriptionKey: "SOCKS5 listener on \(host):\(settings.socksPort) didn't come up. Check Logs."
+                    NSLocalizedDescriptionKey: "SOCKS5 listener on \(host):\(settings.socksPort) didn't come up. Enable Logs and retry if you need details."
                 ])
             }
             let status = lastExitStatus.map { " (\($0))" } ?? ""
             throw NSError(domain: "Loole", code: 12, userInfo: [
-                NSLocalizedDescriptionKey: "loole-client exited before the SOCKS5 listener was ready\(status). Check Logs."
+                NSLocalizedDescriptionKey: "loole-client exited before the SOCKS5 listener was ready\(status). Enable Logs and retry if you need details."
             ])
         }
         log("[CoreManager] Ready. SOCKS5 on \(host):\(settings.socksPort)\n")
@@ -160,6 +168,10 @@ final class CoreManager {
     }
 
     private func log(_ text: String) {
+        logLock.lock()
+        let enabled = captureLogs
+        logLock.unlock()
+        guard enabled else { return }
         onLog?(LogLine(stream: .stdout, text: text))
     }
 

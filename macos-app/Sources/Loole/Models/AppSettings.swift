@@ -23,6 +23,7 @@ struct AppSettings: Equatable {
     var serverSetupComplete: Bool = false
     var theme: AppTheme = .system
     var clientID: String = ""
+    var logsEnabled: Bool = false
 
     static let `default` = AppSettings()
 
@@ -82,6 +83,7 @@ extension AppSettings: Codable {
         case useSystemProxy, setupComplete, serverSetupComplete
         case theme
         case clientID
+        case logsEnabled
         case listenAddr   // legacy — only read during migration
     }
 
@@ -94,6 +96,7 @@ extension AppSettings: Codable {
         serverSetupComplete = (try? c.decode(Bool.self,   forKey: .serverSetupComplete)) ?? false
         theme               = (try? c.decode(AppTheme.self, forKey: .theme)) ?? .system
         clientID            = (try? c.decode(String.self,   forKey: .clientID)) ?? ""
+        logsEnabled         = (try? c.decode(Bool.self,     forKey: .logsEnabled)) ?? false
 
         // Prefer new split fields; fall back to old listenAddr string.
         if let host = try? c.decode(String.self, forKey: .listenHost) {
@@ -117,5 +120,6 @@ extension AppSettings: Codable {
         try c.encode(serverSetupComplete, forKey: .serverSetupComplete)
         try c.encode(theme,               forKey: .theme)
         try c.encode(clientID,            forKey: .clientID)
+        try c.encode(logsEnabled,         forKey: .logsEnabled)
     }
 }

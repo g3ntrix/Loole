@@ -100,6 +100,7 @@ enum ServerPackager {
             // run.sh convenience script
             let runSh = """
             #!/bin/bash
+            pkill -f "[.]/server -d /root/loole/profiles" 2>/dev/null || true
             chmod +x ./server
             ./server -d ./loole/profiles
             """
@@ -161,10 +162,13 @@ enum ServerPackager {
             # 3. Set permissions
             chmod +x server
 
-            # 4. Run the server in the background
+            # 4. Stop any previous Loole server
+            pkill -f "[.]/server -d /root/loole/profiles" 2>/dev/null || true
+
+            # 5. Run the server in the background
             nohup ./server -d /root/loole/profiles > loole.log 2>&1 &
 
-            # 5. Verify startup
+            # 6. Verify startup
             sleep 2
             if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
               echo "OK: Loole server process is running"
@@ -255,6 +259,7 @@ enum ServerPackager {
             sshCmd = "ssh"
             scpCmd = "scp"
         }
+        let stopPrevious = "pkill -f \"[.]/server -d /root/loole/profiles\" 2>/dev/null || true"
         let localVerify = "sleep 2; if pgrep -af \"[.]\\/server -d /root/loole/profiles\" >/dev/null; then echo \"OK: Loole server process is running\"; else echo \"ERROR: Loole server process is not running\"; exit 1; fi; if grep -q \"high-speed profile started\" /root/loole.log; then echo \"OK: Loole profile loaded\"; else echo \"WARN: Loole profile has not loaded yet; recent logs:\"; tail -n 40 /root/loole.log; fi"
         let remoteVerify = "\(sshCmd) \(user)@\(target) '\(localVerify)'"
 
@@ -266,13 +271,15 @@ enum ServerPackager {
                      code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
                     (label: "2. Install Unzip & Extract",
                      code: "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server"),
-                    (label: "3. Run (Background)",
+                    (label: "3. Stop Previous Loole Server",
+                     code: stopPrevious),
+                    (label: "4. Run (Background)",
                      code: "cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &"),
-                    (label: "4. Verify Startup",
+                    (label: "5. Verify Startup",
                      code: localVerify),
-                    (label: "5. Watch Live Logs",
+                    (label: "6. Watch Live Logs",
                      code: "tail -f /root/loole.log"),
-                    (label: "6. Terminate",
+                    (label: "7. Terminate",
                      code: "pkill -f '^./server'")
                 ]
             }
@@ -281,13 +288,15 @@ enum ServerPackager {
                  code: "\(scpCmd) \"\(localPath)\" \(user)@\(target):/root/"),
                 (label: "2. Install Unzip & Extract",
                  code: "\(sshCmd) \(user)@\(target) 'apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server'"),
-                (label: "3. Run (Background)",
+                (label: "3. Stop Previous Loole Server",
+                 code: "\(sshCmd) \(user)@\(target) '\(stopPrevious)'"),
+                (label: "4. Run (Background)",
                  code: "\(sshCmd) \(user)@\(target) 'cd /root && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &'"),
-                (label: "4. Verify Startup",
+                (label: "5. Verify Startup",
                  code: remoteVerify),
-                (label: "5. Watch Live Logs",
+                (label: "6. Watch Live Logs",
                  code: "\(sshCmd) \(user)@\(target) 'tail -f /root/loole.log'"),
-                (label: "6. Terminate",
+                (label: "7. Terminate",
                  code: "\(sshCmd) \(user)@\(target) 'pkill -f ./server'")
             ]
 

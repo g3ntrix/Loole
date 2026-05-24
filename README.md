@@ -57,6 +57,12 @@ Since the traffic looks like legitimate Google API calls (Drive file movements),
 
 ---
 
+## Credits
+
+Loole's high-speed Google Drive transport is based on the **Skirk** method: tunneling SOCKS traffic through a Google Drive mailbox using encrypted mux frames. Thanks to [ShahabSL/Skirk](https://github.com/ShahabSL/Skirk) for pioneering this approach.
+
+---
+
 ## Donations
 
 If you find Loole helpful, consider supporting the development. Every bit helps in maintaining and improving the project!

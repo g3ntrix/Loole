@@ -100,7 +100,7 @@ enum ServerPackager {
             // run.sh convenience script
             let runSh = """
             #!/bin/bash
-            pkill -f "[.]/server -d /root/loole/profiles" 2>/dev/null || true
+            pkill -f "^[.]/server -d /root/loole/profiles$" 2>/dev/null || true
             chmod +x ./server
             ./server -d ./loole/profiles
             """
@@ -157,12 +157,12 @@ enum ServerPackager {
             apt-get update && apt-get install -y unzip && unzip -o \(zipName) && chmod +x server
 
             # 2. Restart Loole server
-            pkill -f "[.]/server -d /root/loole/profiles" 2>/dev/null || true
-            nohup ./server -d /root/loole/profiles > loole.log 2>&1 &
+            pkill -f "^[.]/server -d /root/loole/profiles$" 2>/dev/null || true
+            setsid ./server -d /root/loole/profiles > /root/loole.log 2>&1 < /dev/null &
 
             # 3. Verify startup
             sleep 2
-            if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
+            if pgrep -af '^[.]/server -d /root/loole/profiles$' >/dev/null; then
               echo "OK: Loole server process is running"
             else
               echo "ERROR: Loole server process is not running"
@@ -196,7 +196,7 @@ enum ServerPackager {
 
             # 3. Verify the server picked it up
             sleep 6
-            if pgrep -af './server -d /root/loole/profiles' >/dev/null; then
+            if pgrep -af '^[.]/server -d /root/loole/profiles$' >/dev/null; then
               echo "OK: Loole server process is running"
             else
               echo "ERROR: Loole server process is not running"
@@ -251,9 +251,10 @@ enum ServerPackager {
             sshCmd = "ssh"
             scpCmd = "scp"
         }
-        let stopPrevious = "pkill -f \"[.]/server -d /root/loole/profiles\" 2>/dev/null || true"
-        let installAndRestart = "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server && { \(stopPrevious); } && nohup ./server -d /root/loole/profiles > loole.log 2>&1 &"
-        let localVerify = "sleep 2; if pgrep -af \"[.]\\/server -d /root/loole/profiles\" >/dev/null; then echo \"OK: Loole server process is running\"; else echo \"ERROR: Loole server process is not running\"; exit 1; fi; if grep -q \"high-speed profile started\" /root/loole.log; then echo \"OK: Loole profile loaded\"; else echo \"WARN: Loole profile has not loaded yet; recent logs:\"; tail -n 40 /root/loole.log; fi"
+        let stopPrevious = "pkill -f \"^[.]/server -d /root/loole/profiles$\" 2>/dev/null || true"
+        let startDetached = "(setsid ./server -d /root/loole/profiles > /root/loole.log 2>&1 < /dev/null &)"
+        let installAndRestart = "apt-get update && apt-get install -y unzip && cd /root && unzip -o \(zipName) && chmod +x server && { \(stopPrevious); } && \(startDetached)"
+        let localVerify = "sleep 2; if pgrep -af \"^[.]\\/server -d /root/loole/profiles$\" >/dev/null; then echo \"OK: Loole server process is running\"; else echo \"ERROR: Loole server process is not running\"; exit 1; fi; if grep -q \"high-speed profile started\" /root/loole.log; then echo \"OK: Loole profile loaded\"; else echo \"WARN: Loole profile has not loaded yet; recent logs:\"; tail -n 40 /root/loole.log; fi"
         let remoteVerify = "\(sshCmd) \(user)@\(target) '\(localVerify)'"
 
         switch mode {
